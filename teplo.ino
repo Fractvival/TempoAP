@@ -9,6 +9,7 @@
 #include <DallasTemperature.h>
 #include <Wire.h>
 #include <SPI.h>
+//#include <ESPAsyncWebServer.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <TaskScheduler.h>
@@ -182,6 +183,9 @@ void setup()
   server.on("/datetime", HTTP_POST, handleDateTime);
   server.on("/data", HTTP_POST, handleGetDateTime);
   server.on("/clear", HTTP_POST, handleClear);
+  server.on("/downtemp", HTTP_GET, handleTempDownload);
+ 
+
   server.begin();
   //
   scheduler.init();
@@ -193,6 +197,42 @@ void setup()
   taskTimer.enable();
   scheduler.execute();
 }
+
+/////////////////////////////////////////////////////////////
+
+void handleTempDownload() {
+  String dataToDownload = "";
+  dataToDownload += "HISTORIE TEPLOT\n";
+  dataToDownload += "------------------------\n\n";
+  dataToDownload += "[Pozice EEPROM]\t\t[Cas HH:MM]\t\t[Datum MM:DD]\t\t[Teplota C]\n";
+  dataToDownload += "-------------------------------------------------------------------\n";
+  for (int i = 1; i < 101; i++) 
+  {
+    char posCD[8] = {0};
+    char timeCD[32] = {0};
+    char dateCD[32] = {0};
+    char tempCD[8] = {0};
+    DataEEPROM dataEE = {0};
+    EEPROM.get(i*sizeof(DataEEPROM), dataEE);
+    sprintf(posCD, "%03d", i);
+    sprintf(dateCD, "%02d-%02d", dataEE.Month, dataEE.Day);
+    sprintf(timeCD, "%02d:%02d", dataEE.Hour, dataEE.Minute);
+    sprintf(tempCD, "%02.1f", dataEE.Temp);
+    dataToDownload += "\t";
+    dataToDownload += String(posCD);
+    dataToDownload += "\t\t\t\t\t";
+    dataToDownload += String(timeCD);
+    dataToDownload += "\t\t\t";
+    dataToDownload += String(dateCD);
+    dataToDownload += "\t\t\t\t";
+    dataToDownload += String(tempCD);
+    dataToDownload += "\n";
+  }
+  String filename = "temp.txt";
+  server.sendHeader("Content-Disposition", "attachment; filename=" + filename);
+  server.send(200, "text/plain", dataToDownload);
+}
+
 
 /////////////////////////////////////////////////////////////
 
@@ -455,6 +495,12 @@ void handleHistory()
   html += "color: black;";
   html += "font-size: 50px;";
   html += "}";
+  html += ".down-link {";
+  html += "text-align: center;";
+  html += "font-family: Verdana, sans-serif;";
+  html += "color: black;";
+  html += "font-size: 25px;";
+  html += "}";
   html += "table {";
   html += "border:1px solid #b3adad;";
   html += "border-collapse:collapse;";
@@ -493,6 +539,10 @@ void handleHistory()
   html += "<center>";
   html += "<button class = 'refresh-button' onclick='refreshPage()'>Obnovit stránku</button>";
   html += "</center>";
+  html += "<br>";
+  html += "<div class='down-link'>";
+  html += "<a href='/downtemp' download='temp.txt'>[Stáhnout data do souboru]</a>";
+  html += "</div>";
   html += "<br>";
   html += "<br>";
   html += "<center>";
@@ -633,11 +683,6 @@ void handleGetDateTime()
     html += "<h1>Chyba v nastavovani data a casu!</h1>";
     html += "<h2>Jsou zadane vsechny udaje ?</h2>";
     html += "</div>";
-    html += "<script>";
-    html += "setTimeout(function() {";
-    html += "  window.location.href = '/'";
-    html += "}, 5000);";
-    html += "</script>";
     html += "</body>";
     html += "</html>";    
     server.send(400, "text/html", html);
